@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>數獨遊戲</title>
+    <style>
+        :root {
+            --bg-color: #f0f2f5;
+            --board-bg: #ffffff;
+            --line-color: #34495e;
+            --sub-line-color: #cbd5e1;
+            --highlight-color: #e2e8f0;
+            --selected-color: #bbdefb;
+            --same-num-color: #cffafe;
+            --text-color: #1e293b;
+            --primary-color: #3b82f6;
+            --error-color: #ef4444;
+            --fixed-text: #0f172a;
+            --user-text: #2563eb;
+        }
+
+        /* 關鍵修正：確保邊框不會增加元素的大小 */
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        h1 {
+            margin: 0 0 10px 0;
+            color: var(--line-color);
+        }
+
+        .controls {
+            margin-bottom: 15px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        select, button {
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: 1px solid #cbd5e1;
+            background: white;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        button.primary {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+        }
+
+        button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        /* Sudoku Board */
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            width: 100%;
+        }
+
+        .sudoku-board {
+            display: grid;
+            grid-template-columns: repeat(9, 1fr);
+            grid-template-rows: repeat(9, 1fr);
+            border: 2px solid var(--line-color);
+            background-color: var(--board-bg);
+            width: 100%;
+            max-width: 500px; /* 控制最大寬度 */
+            aspect-ratio: 1;  /* 關鍵修正：強制整個棋盤為正方形 */
+            user-select: none;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        .cell {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            /* 預設細邊框 */
+            border-right: 1px solid var(--sub-line-color);
+            border-bottom: 1px solid var(--sub-line-color);
+            font-size: 1.5rem;
+            font-weight: 500;
+            cursor: pointer;
+            position: relative;
+            transition: background-color 0.1s;
+        }
+
+        /* 移除最右邊和最下面的邊框，避免與大外框重疊 */
+        .cell[data-c="8"] {
+            border-right: none;
+        }
+        .cell[data-r="8"] {
+            border-bottom: none;
+        }
+
+        /* 3x3 粗框線邏輯 */
+        .cell[data-c="2"], .cell[data-c="5"] {
+            border-right: 2px solid var(--line-color);
+        }
+        .cell[data-r="2"], .cell[data-r="5"] {
+            border-bottom: 2px solid var(--line-color);
+        }
+
+        /* States */
+        .cell.fixed {
+            color: var(--fixed-text);
+            font-weight: 700;
+            background-color: #f8fafc;
+        }
+        
+        .cell.user-input {
+            color: var(--user-text);
+        }
+
+        .cell.selected {
+            background-color: var(--selected-color) !important;
+        }
+
+        .cell.highlighted {
+            background-color: var(--highlight-color);
+        }
+        
+        .cell.same-number {
+            background-color: var(--same-num-color);
+        }
+
+        .cell.error {
+            color: var(--error-color);
+            background-color: #fee2e2;
+        }
+
+        /* Number Pad */
+        .numpad {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 8px;
+            width: 100%;
+            max-width: 500px;
+        }
+
+        .num-btn {
+            padding: 12px 0;
+            font-size: 1.25rem;
+            background-color: white;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: var(--line-color);
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            aspect-ratio: 1.5; /* 讓按鈕稍微寬一點但保持比例 */
+        }
+
+        .num-btn:hover {
+            background-color: #f1f5f9;
+        }
+        
+        .num-btn.eraser {
+            color: var(--error-color);
+            font-weight: bold;
+        }
+
+        /* 新增：計時器樣式 */
+        .timer {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--line-color);
+            font-variant-numeric: tabular-nums; /* 防止數字跳動 */
+            margin: 5px 0;
+            font-family: monospace;
+        }
+
+        /* 新增：排行榜樣式 */
+        .leaderboard-container {
+            width: 100%;
+            max-width: 500px;
+            margin-top: 25px;
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            border: 1px solid #e2e8f0;
+        }
+
+        .leaderboard-header {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: var(--line-color);
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--bg-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .leaderboard-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.95rem;
+        }
+
+        .leaderboard-table th {
+            text-align: left;
+            color: var(--sub-line-color);
+            padding: 8px 4px;
+            font-size: 0.85rem;
+        }
+
+        .leaderboard-table td {
+            padding: 10px 4px;
+            border-bottom: 1px solid #f1f5f9;
+            color: var(--text-color);
+        }
+
+        .leaderboard-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .rank-1 { color: #eab308; font-weight: bold; } /* 金 */
+        .rank-2 { color: #94a3b8; font-weight: bold; } /* 銀 */
+        .rank-3 { color: #b45309; font-weight: bold; } /* 銅 */
+        .new-record { color: var(--error-color); font-weight: bold; font-size: 0.8rem; margin-left: 5px; }
+
+        .status-message {
+            height: 24px;
+            color: var(--primary-color);
+            font-weight: 600;
+            text-align: center;
+        }
+
+        @media (max-width: 500px) {
+            .cell {
+                font-size: 1.2rem;
+            }
+            .sudoku-board {
+                max-width: 95vw;
+            }
+            .numpad {
+                max-width: 95vw;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <h1>數獨 Sudoku</h1>
+
+    <!-- 新增：計時器顯示 -->
+    <div id="timer" class="timer">00:00</div>
+
+    <div class="controls">
+        <select id="difficulty" onchange="updateLeaderboardUI()"> <!-- 新增 onchange -->
+            <option value="30">簡單</option>
+            <option value="40" selected>中等</option>
+            <option value="50">困難</option>
+        </select>
+        <button class="primary" onclick="newGame()">新遊戲</button>
+    </div>
+
+    <div class="status-message" id="status"></div>
+
+    <div class="game-container">
+        <div class="sudoku-board" id="board">
+            <!-- Cells generated by JS -->
+        </div>
+
+        <div class="numpad">
+            <button class="num-btn" onclick="inputNumber(1)">1</button>
+            <button class="num-btn" onclick="inputNumber(2)">2</button>
+            <button class="num-btn" onclick="inputNumber(3)">3</button>
+            <button class="num-btn" onclick="inputNumber(4)">4</button>
+            <button class="num-btn" onclick="inputNumber(5)">5</button>
+            <button class="num-btn" onclick="inputNumber(6)">6</button>
+            <button class="num-btn" onclick="inputNumber(7)">7</button>
+            <button class="num-btn" onclick="inputNumber(8)">8</button>
+            <button class="num-btn" onclick="inputNumber(9)">9</button>
+            <button class="num-btn eraser" onclick="inputNumber(0)">⌫</button>
+        </div>
+    </div>
+
+    <!-- 新增：排行榜區塊 -->
+    <div class="leaderboard-container">
+        <div class="leaderboard-header">
+            <span id="lb-title">排行榜 - 中等</span>
+            <span style="font-size: 0.8rem; color: #64748b; font-weight: normal;">(最佳前 5 名)</span>
+        </div>
+        <table class="leaderboard-table">
+            <thead>
+                <tr>
+                    <th style="width: 15%">排名</th>
+                    <th style="width: 35%">時間</th>
+                    <th style="width: 50%">日期</th>
+                </tr>
+            </thead>
+            <tbody id="leaderboard-body">
+                <!-- Javascript will populate this -->
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        let boardState = []; 
+        let solutionState = []; 
+        let fixedMask = []; 
+        let selectedCell = null; 
+        
+        // 新增計時器變數
+        let timerInterval;
+        let timeElapsed = 0;
+        let isGameActive = false;
+
+        const boardElement = document.getElementById('board');
+        const statusElement = document.getElementById('status');
+        const timerElement = document.getElementById('timer');
+
+        function initBoardUI() {
+            boardElement.innerHTML = '';
+            for (let r = 0; r < 9; r++) {
+                for (let c = 0; c < 9; c++) {
+                    const cell = document.createElement('div');
+                    cell.classList.add('cell');
+                    cell.dataset.r = r;
+                    cell.dataset.c = c;
+                    cell.addEventListener('click', () => selectCell(r, c));
+                    boardElement.appendChild(cell);
+                }
+            }
+        }
+
+        function generateSudoku(holes) {
+            const board = Array(9).fill().map(() => Array(9).fill(0));
+            solveSudoku(board);
+            solutionState = JSON.parse(JSON.stringify(board));
+
+            const puzzle = JSON.parse(JSON.stringify(board));
+            let attempts = holes;
+            while (attempts > 0) {
+                let r = Math.floor(Math.random() * 9);
+                let c = Math.floor(Math.random() * 9);
+                if (puzzle[r][c] !== 0) {
+                    puzzle[r][c] = 0;
+                    attempts--;
+                }
+            }
+            return puzzle;
+        }
+
+        function solveSudoku(board) {
+            for (let r = 0; r < 9; r++) {
+                for (let c = 0; c < 9; c++) {
+                    if (board[r][c] === 0) {
+                        const nums = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+                        shuffleArray(nums);
+                        for (let num of nums) {
+                            if (isValid(board, r, c, num)) {
+                                board[r][c] = num;
+                                if (solveSudoku(board)) return true;
+                                board[r][c] = 0;
+                            }
+                        }
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        function isValid(board, r, c, num) {
+            for (let i = 0; i < 9; i++) {
+                if (board[r][i] === num && i !== c) return false;
+                if (board[i][c] === num && i !== r) return false;
+            }
+            let startR = Math.floor(r / 3) * 3;
+            let startC = Math.floor(c / 3) * 3;
+            for (let i = 0; i < 3; i++) {
+                for (let j = 0; j < 3; j++) {
+                    if (board[startR + i][startC + j] === num && (startR + i !== r || startC + j !== c)) return false;
+                }
+            }
+            return true;
+        }
+
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+        }
+
+        function newGame() {
+            const difficulty = parseInt(document.getElementById('difficulty').value);
+            boardState = generateSudoku(difficulty);
+            
+            // Create fixed mask
+            fixedMask = boardState.map(row => row.map(num => num !== 0));
+            
+            selectedCell = null;
+            statusElement.innerText = "遊戲開始！";
+            statusElement.style.color = "var(--primary-color)";
+            
+            // 新增：重置並開始計時器，更新排行榜
+            startTimer();
+            updateLeaderboardUI();
+            
+            renderBoard();
+        }
+
+        // 新增：計時器相關功能
+        function startTimer() {
+            stopTimer();
+            timeElapsed = 0;
+            isGameActive = true;
+            timerElement.innerText = "00:00";
+            
+            timerInterval = setInterval(() => {
+                timeElapsed++;
+                timerElement.innerText = formatTime(timeElapsed);
+            }, 1000);
+        }
+
+        function stopTimer() {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+            isGameActive = false;
+        }
+
+        function formatTime(seconds) {
+            const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+            const s = (seconds % 60).toString().padStart(2, '0');
+            return `${m}:${s}`;
+        }
+
+        // 新增：排行榜相關功能
+        function getDifficultyLabel(val) {
+            if (val == 30) return "簡單";
+            if (val == 40) return "中等";
+            return "困難";
+        }
+
+        function saveScore() {
+            const diffVal = document.getElementById('difficulty').value;
+            const key = `sudoku_lb_${diffVal}`;
+            const now = new Date();
+            const dateStr = `${now.getMonth()+1}/${now.getDate()} ${now.getHours()}:${now.getMinutes().toString().padStart(2, '0')}`;
+            
+            let scores = JSON.parse(localStorage.getItem(key) || '[]');
+            
+            scores.push({
+                time: timeElapsed,
+                date: dateStr
+            });
+            
+            // 排序：時間短的在前
+            scores.sort((a, b) => a.time - b.time);
+            
+            // 只保留前 5 名
+            scores = scores.slice(0, 5);
+            
+            localStorage.setItem(key, JSON.stringify(scores));
+            updateLeaderboardUI();
+        }
+
+        function updateLeaderboardUI() {
+            const diffVal = document.getElementById('difficulty').value;
+            const key = `sudoku_lb_${diffVal}`;
+            const scores = JSON.parse(localStorage.getItem(key) || '[]');
+            const tbody = document.getElementById('leaderboard-body');
+            const title = document.getElementById('lb-title');
+            
+            title.innerText = `排行榜 - ${getDifficultyLabel(diffVal)}`;
+            tbody.innerHTML = '';
+            
+            if (scores.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:#94a3b8; padding: 20px;">尚無紀錄，快來挑戰！</td></tr>';
+                return;
+            }
+
+            scores.forEach((score, index) => {
+                const tr = document.createElement('tr');
+                const rankClass = index < 3 ? `rank-${index + 1}` : '';
+                tr.innerHTML = `
+                    <td class="${rankClass}">#${index + 1}</td>
+                    <td style="font-family:monospace; font-weight:600;">${formatTime(score.time)}</td>
+                    <td style="color:#64748b; font-size:0.85rem;">${score.date}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function renderBoard() {
+            const cells = document.querySelectorAll('.cell');
+            cells.forEach(cell => {
+                const r = parseInt(cell.dataset.r);
+                const c = parseInt(cell.dataset.c);
+                const value = boardState[r][c];
+
+                cell.className = 'cell'; // Reset class
+                cell.innerText = value === 0 ? '' : value;
+
+                if (fixedMask[r][c]) {
+                    cell.classList.add('fixed');
+                } else if (value !== 0) {
+                    cell.classList.add('user-input');
+                }
+
+                if (selectedCell) {
+                    if (selectedCell.r === r && selectedCell.c === c) {
+                        cell.classList.add('selected');
+                    } else if (selectedCell.r === r || selectedCell.c === c || 
+                              (Math.floor(selectedCell.r/3) === Math.floor(r/3) && Math.floor(selectedCell.c/3) === Math.floor(c/3))) {
+                        cell.classList.add('highlighted');
+                    }
+                    const selectedVal = boardState[selectedCell.r][selectedCell.c];
+                    if (selectedVal !== 0 && value === selectedVal) {
+                        cell.classList.add('same-number');
+                    }
+                }
+
+                if (value !== 0 && !fixedMask[r][c]) {
+                    if (!isValid(boardState, r, c, value)) {
+                        cell.classList.add('error');
+                    }
+                }
+            });
+            checkWin();
+        }
+
+        function selectCell(r, c) {
+            selectedCell = { r, c };
+            renderBoard();
+        }
+
+        function inputNumber(num) {
+            if (!selectedCell) return;
+            const { r, c } = selectedCell;
+            if (fixedMask[r][c]) return;
+
+            boardState[r][c] = num;
+            renderBoard();
+        }
+
+        function checkWin() {
+            let isFull = true;
+            let isCorrect = true;
+
+            for(let r=0; r<9; r++) {
+                for(let c=0; c<9; c++) {
+                    if (boardState[r][c] === 0) {
+                        isFull = false;
+                        break;
+                    }
+                    if (!isValid(boardState, r, c, boardState[r][c])) {
+                        isCorrect = false;
+                    }
+                }
+            }
+
+            if (isFull) {
+                if (isCorrect) {
+                    if (isGameActive) {
+                        stopTimer(); // 停止計時
+                        saveScore(); // 儲存成績
+                        statusElement.innerHTML = `恭喜完成！耗時: <b>${formatTime(timeElapsed)}</b>`;
+                    }
+                    statusElement.style.color = "green";
+                } else {
+                    statusElement.innerText = "還沒完成，請檢查紅色錯誤格子。";
+                    statusElement.style.color = "var(--error-color)";
+                }
+            } else {
+                statusElement.innerText = "";
+            }
+        }
+
+        // Keyboard support
+        document.addEventListener('keydown', (e) => {
+            if (!selectedCell) return;
+            if (e.key >= '1' && e.key <= '9') {
+                inputNumber(parseInt(e.key));
+            } else if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') {
+                inputNumber(0);
+            } else if (e.key.startsWith('Arrow')) {
+                let {r, c} = selectedCell;
+                if (e.key === 'ArrowUp') r = Math.max(0, r - 1);
+                if (e.key === 'ArrowDown') r = Math.min(8, r + 1);
+                if (e.key === 'ArrowLeft') c = Math.max(0, c - 1);
+                if (e.key === 'ArrowRight') c = Math.min(8, c + 1);
+                selectCell(r, c);
+            }
+        });
+
+        initBoardUI();
+        newGame();
+    </script>
+</body>
+</html>
